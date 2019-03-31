@@ -1,39 +1,91 @@
 package bid
 
 import (
-	"airpush/client"
-	"context"
+	"airpush/auction/dsp"
 	"sync"
 	"time"
 )
 
-type Response struct {
-	Time time.Duration
-	Data interface{}
+// settings setter
+type BidOption func(*Bid)
+
+// SetDsp
+func SetDsp(d *dsp.Dsp) BidOption {
+	return func(t *Bid) {
+		t.dsp = d
+	}
 }
 
+// Bid
 type Bid struct {
 	mu sync.Mutex
-
-	res Response
-	client *client.Client
-	ctx context.Context
+	dsp *dsp.Dsp
+	res *RtbResponse
 	err []string
 }
 
-func (b *Bid) WithContext(ctx context.Context) *Bid {
-	b.ctx = ctx
-	return b
-}
+// Bid.New()
+func New(opts ...BidOption) (proto *Bid) {
 
-func (b *Bid) Do() {
-	b.client.Do()
+	proto = &Bid{}
+
+	// set custom settings
+	for _, opt := range opts {
+		opt(proto)
+	}
 	return
 }
 
-func (b *Bid) AddErr(err string) {
+// execute bid request
+func (b *Bid) Do() {
+
+	startTime := time.Now()
+	b.res = &RtbResponse{
+		Dsp: b.dsp.GetName(),
+	}
+
+	// calc request time
+	defer func() {
+		b.res.Build = time.Since(startTime).String()
+	}()
+
+	buf, err := b.dsp.GetClient().Do()
+	if err != nil {
+		b.err = append(b.err, err.Error())
+		return
+	}
+
+	res := new(BidResponse)
+	err = res.UnmarshalJSON(buf)
+	if err != nil {
+		b.err = append(b.err, err.Error())
+		return
+	}
+
+	b.res.Bid = *res
+}
+
+// get bid response
+func (b *Bid) GetRes() *RtbResponse {
 	defer b.mu.Unlock()
 	b.mu.Lock()
 
-	b.err = append(b.err, err)
+	return b.res
+}
+
+// get bid errors
+func (b *Bid) GetErr() []string {
+	defer b.mu.Unlock()
+	b.mu.Lock()
+
+	return b.err
+}
+
+// order bids by cpm
+type OrderBids []*Bid
+
+func (a OrderBids) Len() int      { return len(a) }
+func (a OrderBids) Swap(i, j int) { a[i], a[j] = a[j], a[i] }
+func (a OrderBids) Less(i, j int) bool {
+	return a[i].GetRes().Bid.Cpm > a[j].GetRes().Bid.Cpm
 }

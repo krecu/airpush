@@ -25,3 +25,29 @@ app:
     # The server will close all the incoming connections after sending
     # the first response to client if this option is set to true.
     DisableKeepalive: false
+
+  auction:
+    # global timeout per request in millisecond
+    timeout: 100
+    dsp:
+      node_1:
+        # connection type HTTP/GRPC
+        type: http
+        # timeout on request per dsp in millisecond
+        timeout: 1000
+        # dsp endpoint
+        addr: http://127.0.0.1:8080/bid
+      node_2:
+        # connection type HTTP/GRPC
+        type: http
+        # timeout on request per dsp in millisecond
+        timeout: 60
+        # dsp endpoint
+        addr: http://127.0.0.1:8080/bid
+      node_3:
+        # connection type HTTP/GRPC
+        type: http
+        # timeout on request per dsp in millisecond
+        timeout: 80
+        # dsp endpoint
+        addr: http://127.0.0.1:8080/bid

@@ -2,6 +2,7 @@ package server
 
 import (
 	"airpush/auction"
+	"airpush/auction/bid"
 	"fmt"
 	"github.com/fasthttp/router"
 	"github.com/valyala/fasthttp"
@@ -9,6 +10,8 @@ import (
 	"os"
 	"time"
 )
+
+const CONTENT_TYPE = "application/json; charset=utf-8"
 
 // settings model
 type ServerSettings struct {
@@ -30,6 +33,13 @@ type ServerSetOption func(*Server)
 func SetServerName(name string) ServerSetOption {
 	return func(s *Server) {
 		s.settings.ServerName = name
+	}
+}
+
+// auction
+func SetAuction(auction *auction.Auction) ServerSetOption {
+	return func(s *Server) {
+		s.auction = auction
 	}
 }
 
@@ -131,12 +141,12 @@ func defaultMiddleWare(next fasthttp.RequestHandler) fasthttp.RequestHandler {
 			ctx.Response.Header.Set("Access-Control-Allow-Credentials", "true")
 			ctx.Response.Header.Set("Access-Control-Allow-Origin", origin)
 			ctx.Response.Header.Set("Vary", "Origin")
-			ctx.SetContentType("application/json; charset=utf-8")
+			ctx.SetContentType(CONTENT_TYPE)
 		} else {
 			ctx.Response.Header.Set("Access-Control-Allow-Credentials", "true")
 			ctx.Response.Header.Set("Access-Control-Allow-Origin", "*")
 			ctx.Response.Header.Set("Vary", "Origin")
-			ctx.SetContentType("application/json; charset=utf-8")
+			ctx.SetContentType(CONTENT_TYPE)
 		}
 
 		// no content for cr request
@@ -174,8 +184,11 @@ func New(opts ...ServerSetOption) (proto *Server, err error) {
 	// monitoring app route
 	routing.GET("/ping", proto.PingRoute)
 
-	// monitoring app
-	routing.GET("/", proto.BidRoute)
+	// bid
+	routing.GET("/bid", proto.BidRoute)
+
+	// auction
+	routing.GET("/", proto.AuctionRoute)
 
 	// определяем сервер
 	proto.server = &fasthttp.Server{
@@ -201,14 +214,45 @@ func (s *Server) PingRoute(ctx *fasthttp.RequestCtx) {
 	ctx.SetStatusCode(fasthttp.StatusNoContent)
 }
 
-// services route for monitoring app state
+// bid response
 func (s *Server) BidRoute(ctx *fasthttp.RequestCtx) {
-	ctx.SetStatusCode(fasthttp.StatusNoContent)
 
+	// generate random values
+	rate := RandInt(1, 100)
+	cpm := RandFloat(1, 100)
+
+	b := bid.BidResponse{
+		Cpm: cpm,
+		Wait: fmt.Sprintf("%d", rate),
+	}
+
+	// wait before response
+	time.Sleep(time.Duration(rate) * time.Millisecond)
+
+	buf, _ := b.MarshalJSON()
+	_, _ = ctx.Write(buf)
+}
+
+// auction
+func (s *Server) AuctionRoute(ctx *fasthttp.RequestCtx) {
+	
 	//run auction
-	//bid, err := s.auction.Do()
+	b, err := s.auction.Do()
+	if err != nil {
+		ctx.SetStatusCode(fasthttp.StatusNoContent)
+		s.logger.Printf("err auction: %s", err)
+		return
+	}
 
-	//return bet bid
+	buf, err := b.GetRes().MarshalJSON()
+	if err != nil {
+		ctx.SetStatusCode(fasthttp.StatusNoContent)
+		s.logger.Printf("err marshal: %s", err)
+		return
+	}
+
+	ctx.SetStatusCode(fasthttp.StatusOK)
+	_, _ = ctx.Write(buf)
 }
 
 // loop server

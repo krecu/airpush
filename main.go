@@ -1,6 +1,9 @@
 package main
 
 import (
+	"airpush/auction"
+	"airpush/auction/dsp"
+	"airpush/client"
 	"airpush/server"
 	"bufio"
 	"flag"
@@ -44,7 +47,6 @@ func initConfig() (v *viper.Viper, err error) {
 
 // init app settings
 func init() {
-	runtime.GOMAXPROCS(runtime.NumCPU() / 2)
 	rand.Seed(time.Now().UnixNano())
 }
 
@@ -93,8 +95,26 @@ func main()  {
 		}
 	}
 
+	// build dsp and custom clients
+	var dsps []*dsp.Dsp
+	for name, _ := range config.GetStringMap("app.auction.dsp") {
+
+		c, err := client.New(
+			client.SetAddr(config.GetString(fmt.Sprintf("app.auction.dsp.%s.addr", name))),
+			client.SetConnectionType(config.GetString(fmt.Sprintf("app.auction.dsp.%s.type", name))),
+			client.WithTimeout(config.GetDuration(fmt.Sprintf("app.auction.dsp.%s.timeout", name)) * time.Millisecond),
+		)
+		if err != nil {
+			logger.Fatalf("init client %s err: %s", name, err)
+		}
+
+		dsps = append(dsps, dsp.New(name, c))
+	}
+
 	// init server
 	s, err := server.New(
+
+		server.SetAuction(auction.New(auction.SetDsp(dsps), auction.SetTimeout(config.GetDuration("app.auction.timeout") * time.Millisecond))),
 
 		server.SetConcurrency(config.GetInt("app.server.Concurrency")),
 		server.SetDisableKeepalive(config.GetBool("app.server.DisableKeepalive")),
